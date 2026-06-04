@@ -1,23 +1,41 @@
-import { ai } from "@/lib/gemini";
+import { GoogleGenAI } from "@google/genai";
+
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY,
+});
+
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 export async function POST(req: Request) {
-  try {
-    const { question } = await req.json();
+  const { question } = await req.json();
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: question,
-    });
+  try {
+    // 🔁 retry logic (important)
+    let response;
+
+    for (let i = 0; i < 3; i++) {
+      try {
+        response = await ai.models.generateContent({
+          model: "gemini-2.0-flash-lite",
+          contents: `Answer in short 2-3 lines: ${question}`,
+        });
+        break;
+      } catch (err: any) {
+        if (i === 2) throw err;
+        await sleep(1000 * (i + 1)); // wait 1s, 2s
+      }
+    }
 
     return Response.json({
-      answer: response.text,
+      answer: response?.text || "No response",
     });
-  } catch (error) {
-    console.error(error);
 
+  } catch (error) {
     return Response.json(
-      { error: "Failed to generate answer" },
-      { status: 500 }
+      {
+        answer: "AI is busy. Please try again in a few seconds.",
+      },
+      { status: 503 }
     );
   }
 }
