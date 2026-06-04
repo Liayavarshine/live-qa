@@ -2,32 +2,28 @@
 
 import { supabase } from "@/lib/supabase";
 
-export default function QuestionCard({
-  question,
-}: {
-  question: any;
-}) {
-  const voteQuestion = async () => {
-    await supabase
-      .from("questions")
-      .update({
-        votes: question.votes + 1,
-      })
-      .eq("id", question.id);
-  };
-
+export default function QuestionCard({ question }: any) {
   return (
-    <div className="border rounded-2xl p-5 flex gap-4 items-center bg-white shadow-sm">
-      <button
-        onClick={voteQuestion}
-        className="border px-4 py-2 rounded-xl"
-      >
-        ▲ {question.votes}
-      </button>
+    <div className="p-4 border rounded-xl mb-3 bg-white">
 
-      <h3 className="font-medium text-lg">
-        {question.question}
-      </h3>
+      {/* QUESTION */}
+      <p className="font-semibold text-gray-900">
+        ▲ {question.upvotes || 0} {question.question}
+      </p>
+
+      {/* ANSWER */}
+      <div className="mt-2">
+        {question.answer ? (
+          <p className="text-green-700 bg-green-50 p-2 rounded-lg">
+            🤖 {question.answer}
+          </p>
+        ) : (
+          <p className="text-gray-400 text-sm">
+            ⏳ Waiting for AI answer...
+          </p>
+        )}
+      </div>
+
     </div>
   );
 }
