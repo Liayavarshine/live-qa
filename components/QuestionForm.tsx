@@ -5,18 +5,45 @@ import { supabase } from "@/lib/supabase";
 
 export default function QuestionForm() {
   const [question, setQuestion] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
     if (!question.trim()) return;
 
-    const { error } = await supabase
-      .from("questions")
-      .insert({
-        question,
+    setLoading(true);
+
+    try {
+      // Get AI answer
+      const res = await fetch("/api/answer", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          question,
+        }),
       });
 
-    if (!error) {
+      const data = await res.json();
+
+      // Save question + AI answer to Supabase
+      const { error } = await supabase
+        .from("questions")
+        .insert({
+          question,
+          answer: data.answer,
+        });
+
+      if (error) {
+        console.error(error);
+        return;
+      }
+
       setQuestion("");
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -31,9 +58,10 @@ export default function QuestionForm() {
 
       <button
         onClick={handleSubmit}
+        disabled={loading}
         className="bg-blue-600 text-white px-6 py-3 rounded-xl"
       >
-        Ask
+        {loading ? "Thinking..." : "Ask"}
       </button>
     </div>
   );
