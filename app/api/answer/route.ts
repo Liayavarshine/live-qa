@@ -1,41 +1,49 @@
-import { GoogleGenAI } from "@google/genai";
+import Groq from "groq-sdk";
 
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY,
 });
 
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
-
 export async function POST(req: Request) {
-  const { question } = await req.json();
-
   try {
-    // 🔁 retry logic (important)
-    let response;
+    const { question } = await req.json();
 
-    for (let i = 0; i < 3; i++) {
-      try {
-        response = await ai.models.generateContent({
-          model: "gemini-2.0-flash-lite",
-          contents: `Answer in short 2-3 lines: ${question}`,
-        });
-        break;
-      } catch (err: any) {
-        if (i === 2) throw err;
-        await sleep(1000 * (i + 1)); // wait 1s, 2s
-      }
-    }
+    const completion =
+      await groq.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+
+        messages: [
+          {
+            role: "system",
+            content:
+              "Answer briefly in 2-3 lines.",
+          },
+          {
+            role: "user",
+            content: question,
+          },
+        ],
+      });
+
+    const answer =
+      completion.choices[0]?.message?.content ||
+      "No response";
 
     return Response.json({
-      answer: response?.text || "No response",
+      answer,
     });
 
   } catch (error) {
+    console.error("Groq Error:", error);
+
     return Response.json(
       {
-        answer: "AI is busy. Please try again in a few seconds.",
+        answer:
+          "AI is busy. Please try again later.",
       },
-      { status: 503 }
+      {
+        status: 500,
+      }
     );
   }
 }

@@ -33,7 +33,7 @@ export default function QuestionCard({ question }: any) {
 
       {/*
       ANSWER SECTION (HIDDEN)
-
+      */}
       <div className="mt-2">
         {question.answer ? (
           <p className="text-green-700 bg-green-50 p-2 rounded-lg">
@@ -45,7 +45,7 @@ export default function QuestionCard({ question }: any) {
           </p>
         )}
       </div>
-      */}
+
     </div>
   );
 }
