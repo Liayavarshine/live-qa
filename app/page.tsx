@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 
 import QuestionForm from "@/components/QuestionForm";
 import QuestionCard from "@/components/QuestionCard";
+import Pollcard from "@/components/Pollcard";
 
 export default function Home() {
   const [questions, setQuestions] = useState<any[]>([]);
@@ -64,6 +65,9 @@ export default function Home() {
           Interactive ✓
         </p>
 
+        <Pollcard />
+
+        <br></br>
         <QuestionForm />
 
         <input
