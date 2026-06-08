@@ -1,18 +1,29 @@
 "use client";
 
-import { useState } from "react";
+import { supabase } from "@/lib/supabase";
 
 export default function QuestionCard({ question }: any) {
-  const [votes, setVotes] = useState(0);
+  const handleVote = async () => {
+    const { error } = await supabase
+      .from("questions")
+      .update({
+        votes: (question.votes || 0) + 1,
+      })
+      .eq("id", question.id);
+
+    if (error) {
+      console.error("Vote update failed:", error);
+    }
+  };
 
   return (
     <div className="p-4 border rounded-xl mb-3 bg-white">
       <div className="flex items-center gap-3">
         <button
-          onClick={() => setVotes(votes + 1)}
+          onClick={handleVote}
           className="font-semibold text-blue-600 hover:text-blue-800"
         >
-          ▲ {votes}
+          ▲ {question.votes || 0}
         </button>
 
         <p className="font-semibold text-gray-900">
