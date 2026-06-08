@@ -3,18 +3,18 @@
 import { supabase } from "@/lib/supabase";
 
 export default function QuestionCard({ question }: any) {
-  const handleVote = async () => {
-    const { error } = await supabase
-      .from("questions")
-      .update({
-        votes: (question.votes || 0) + 1,
-      })
-      .eq("id", question.id);
+ const handleVote = async () => {
+  const { data, error } = await supabase
+    .from("questions")
+    .update({
+      votes: (question.votes || 0) + 1,
+    })
+    .eq("id", question.id)
+    .select();
 
-    if (error) {
-      console.error("Vote update failed:", error);
-    }
-  };
+  console.log("data:", data);
+  console.log("error:", error);
+};
 
   return (
     <div className="p-4 border rounded-xl mb-3 bg-white">
