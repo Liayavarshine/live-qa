@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-export default function PollCard() {
+export default function Pollcard() {
   const [votes, setVotes] = useState([0, 0, 0, 0]);
   const [voted, setVoted] = useState(false);
 

@@ -1,20 +1,20 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-
+import { useEffect, useRef, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
+import { Question } from "@/lib/types";
+import { fetchQuestionsAndReplies } from "@/lib/replies";
 
 import QuestionForm from "@/components/QuestionForm";
 import QuestionCard from "@/components/QuestionCard";
 import Pollcard from "@/components/Pollcard";
+import LiveReactions from "@/components/LiveReactions";
+import ExportBar from "@/components/ExportBar";
 
 export default function Home() {
-  const [questions, setQuestions] = useState<any[]>([]);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // searchInput  — the live value bound to the <input> element
-  // activeSearch — the value actually used to filter the list
-  // Keeping them separate lets us commit a search only on button click
-  // while still supporting real-time filtering as the user types.
   const [searchInput, setSearchInput] = useState("");
   const [activeSearch, setActiveSearch] = useState("");
 
@@ -22,24 +22,36 @@ export default function Home() {
 
   // ── Data loading ────────────────────────────────────────────────────────────
 
-  const loadQuestions = async () => {
-    const { data } = await supabase
-      .from("questions")
-      .select("*")
-      .order("votes", { ascending: false });
+  const loadQuestions = useCallback(async () => {
+    try {
+      const data = await fetchQuestionsAndReplies();
+      setQuestions(data);
+    } catch (err) {
+      console.error("Failed to load questions:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-    setQuestions(data || []);
-  };
-
-  // Subscribe to real-time changes so the list stays in sync across clients.
+  // Subscribe to real-time changes on both `questions` and `replies` tables
   useEffect(() => {
-    loadQuestions();
+    // Perform initial fetch asynchronously to avoid cascading synchronous render
+    queueMicrotask(() => {
+      loadQuestions();
+    });
 
     const channel = supabase
-      .channel("questions-channel")
+      .channel("live-qa-db-channel")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "questions" },
+        () => {
+          loadQuestions();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "replies" },
         () => {
           loadQuestions();
         }
@@ -49,28 +61,24 @@ export default function Home() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [loadQuestions]);
 
   // ── Search helpers ───────────────────────────────────────────────────────────
 
-  // Real-time: update activeSearch on every keystroke so the list filters live.
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setSearchInput(value);
-    setActiveSearch(value); // live filtering as the user types
+    setActiveSearch(value);
   };
 
-  // Explicit Search button click — commits the current input value.
   const handleSearch = () => {
     setActiveSearch(searchInput);
   };
 
-  // Allow pressing Enter inside the search box to trigger a search.
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") handleSearch();
   };
 
-  // Clear both the input and the active filter, then re-focus the input.
   const handleClear = () => {
     setSearchInput("");
     setActiveSearch("");
@@ -79,77 +87,116 @@ export default function Home() {
 
   // ── Filtering ────────────────────────────────────────────────────────────────
 
-  // Case-insensitive substring match against the committed activeSearch value.
-  const filteredQuestions = questions.filter((q) =>
-    q.question.toLowerCase().includes(activeSearch.toLowerCase())
-  );
+  const filteredQuestions = questions.filter((q) => {
+    if (!activeSearch.trim()) return true;
+    const query = activeSearch.toLowerCase();
+    const inQuestion = q.question.toLowerCase().includes(query);
+    const inAnswer = (q.answer || "").toLowerCase().includes(query);
+    const inReplies = (q.replies || []).some(
+      (r) =>
+        r.content.toLowerCase().includes(query) ||
+        r.author.toLowerCase().includes(query)
+    );
+    return inQuestion || inAnswer || inReplies;
+  });
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
-    <main className="min-h-screen bg-white">
+    <main className="min-h-screen bg-white pb-24">
       <div className="max-w-4xl mx-auto py-10 px-4">
+        {/* ── Top Header & Admin Export PDF Button ────────────────────────── */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 pb-4 border-b border-gray-100">
+          <div>
+            <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-gray-900">
+              Live Q&A
+            </h1>
+            <p className="text-gray-500 text-sm mt-1.5 flex items-center gap-2">
+              <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span>Interactive Audience Session</span>
+              <span className="text-gray-300">•</span>
+              <span className="text-gray-400">
+                {questions.length} {questions.length === 1 ? "question" : "questions"}
+              </span>
+            </p>
+          </div>
 
-        <h1 className="text-5xl font-bold mb-2">Live Q&A</h1>
+          {/* Single-Click PDF Export Button */}
+          <ExportBar questions={questions} />
+        </div>
 
-        <p className="text-gray-500 mb-8">Interactive ✓</p>
-
+        {/* Existing Interactive Poll Card */}
         <Pollcard />
 
-        <br />
+        <div className="my-6" />
 
+        {/* Question Submission Form */}
         <QuestionForm />
 
-        {/* ── Search bar ───────────────────────────────────────────────────── */}
-        <div className="flex gap-2 mt-5 mb-6">
-          {/* Search input */}
+        {/* ── Search Bar ─────────────────────────────────────────────────── */}
+        <div className="flex gap-2 mt-6 mb-6">
           <input
             ref={inputRef}
-            className="flex-1 border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-300"
-            placeholder="Search questions..."
+            className="flex-1 border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            placeholder="Search questions, AI answers, or reply comments..."
             value={searchInput}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
           />
 
-          {/* Search button — commits the current search term */}
           <button
             onClick={handleSearch}
-            className="bg-blue-600 text-white px-5 py-3 rounded-xl hover:bg-blue-700 transition-colors font-medium"
+            className="bg-blue-600 text-white px-5 py-3 rounded-xl hover:bg-blue-700 transition-colors font-medium text-sm cursor-pointer active:scale-95"
           >
             Search
           </button>
 
-          {/* Clear button — only shown when there is an active search term */}
           {searchInput && (
             <button
               onClick={handleClear}
-              className="bg-gray-100 text-gray-700 px-5 py-3 rounded-xl hover:bg-gray-200 transition-colors font-medium border border-gray-300"
+              className="bg-gray-100 text-gray-700 px-5 py-3 rounded-xl hover:bg-gray-200 transition-colors font-medium text-sm border border-gray-300 cursor-pointer active:scale-95"
             >
               Clear
             </button>
           )}
         </div>
 
-        {/* ── Question list ─────────────────────────────────────────────────── */}
+        {/* ── Question List with Threaded Replies ─────────────────────────── */}
         <div className="space-y-4">
-          {filteredQuestions.length > 0 ? (
+          {loading ? (
+            <div className="text-center py-12 text-gray-400">
+              <p className="text-sm animate-pulse">Loading live questions...</p>
+            </div>
+          ) : filteredQuestions.length > 0 ? (
             filteredQuestions.map((question) => (
-              <QuestionCard key={question.id} question={question} />
+              <QuestionCard
+                key={question.id}
+                question={question}
+                onRefresh={loadQuestions}
+              />
             ))
           ) : (
-            // Empty-state message shown when the search yields no results.
-            <div className="text-center py-12 text-gray-400">
-              <p className="text-lg">
+            <div className="text-center py-12 text-gray-400 bg-gray-50/50 rounded-2xl border border-dashed border-gray-200">
+              <p className="text-base text-gray-600 font-medium">
                 {activeSearch
-                  ? `No questions found for "${activeSearch}"`
+                  ? `No questions match "${activeSearch}"`
                   : "No questions yet. Be the first to ask!"}
               </p>
+              {activeSearch && (
+                <button
+                  onClick={handleClear}
+                  className="mt-2 text-xs text-blue-600 hover:underline font-semibold"
+                >
+                  Clear search filter
+                </button>
+              )}
             </div>
           )}
         </div>
-
       </div>
+
+      {/* ── Live Floating Emoji Reactions ─────────────────────────────────── */}
+      <LiveReactions />
     </main>
   );
 }
